@@ -39,9 +39,11 @@ function formatDate(iso: string): string {
 export function PastDecisions({
   onSelect,
   currentData,
+  onHistoryChange,
 }: {
   onSelect: (data: DashboardData) => void;
   currentData: DashboardData | null;
+  onHistoryChange?: () => void;
 }) {
   const [decisions, setDecisions] = useState<StoredDecision[]>([]);
 
@@ -53,13 +55,14 @@ export function PastDecisions({
     e.stopPropagation();
     deleteDecision(id);
     setDecisions(getDecisions());
+    onHistoryChange?.();
   }
 
   if (decisions.length === 0) return null;
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-medium uppercase tracking-wider text-zinc-500">
           History
         </h3>
@@ -75,7 +78,7 @@ export function PastDecisions({
           <li
             key={d.id}
             onClick={() => onSelect(d.data)}
-            className="group flex cursor-pointer items-center justify-between gap-2 rounded-lg border border-zinc-700/50 px-3 py-2 text-left transition hover:border-amber-500/30 hover:bg-zinc-800/50"
+            className="group flex cursor-pointer items-center justify-between gap-2 rounded-lg border border-zinc-700/50 px-3 py-3 text-left transition hover:border-amber-500/30 hover:bg-zinc-800/50 min-h-[56px] active:bg-zinc-800/70 touch-manipulation"
           >
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm text-zinc-300" title={d.summary}>
@@ -88,7 +91,7 @@ export function PastDecisions({
             </div>
             <button
               onClick={(e) => handleDelete(e, d.id)}
-              className="shrink-0 rounded p-1 text-zinc-500 opacity-0 transition hover:bg-red-900/30 hover:text-red-400 group-hover:opacity-100"
+              className="shrink-0 rounded p-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-zinc-500 opacity-70 sm:opacity-0 transition hover:bg-red-900/30 hover:text-red-400 group-hover:opacity-100 touch-manipulation"
               title="Delete"
             >
               <svg

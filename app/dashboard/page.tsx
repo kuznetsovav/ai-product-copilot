@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { AnalyzeForm, type DashboardData } from "@/ui/dashboard/analyze-form";
 import { INTAKE_RESULT_KEY } from "@/lib/constants";
+import { getDecisions } from "@/lib/store/decisions";
 import {
   ProblemSummaryCard,
   CausesCard,
@@ -11,7 +12,7 @@ import {
   ExperimentsCard,
   MetricsCard,
 } from "@/ui/dashboard/cards";
-import { DecisionLayers } from "@/ui/dashboard/decision-layers";
+import { FlowArrow } from "@/ui/dashboard/card-connectors";
 import { PastDecisions } from "@/ui/dashboard/past-decisions";
 
 const PROGRESS_CAP = 99;
@@ -20,6 +21,8 @@ const PROGRESS_DURATION_MS = 28000; // time to reach 99% if job is slow
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [historyVersion, setHistoryVersion] = useState(0);
+  const hasHistory = getDecisions().length > 0;
   const [progress, setProgress] = useState(0);
   const progressStartRef = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -79,31 +82,44 @@ export default function DashboardPage() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-[var(--background)]">
-      <div className="mx-auto max-w-6xl px-4 py-8">
-        <header className="mb-8">
-          <h1 className="font-display text-2xl font-semibold tracking-tight text-[var(--foreground)]">
-            PM Decision Copilot
-          </h1>
-          <p className="mt-0.5 text-sm text-zinc-500">
-            Structured reasoning: problem → causes → segments → hypotheses → experiments → metrics
-          </p>
-        </header>
+    <main className="min-h-screen w-full bg-[var(--background)]">
+      <div className="flex w-full justify-center">
+        <div className="w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+          <header className="mb-6 sm:mb-8 text-center">
+            <h1 className="font-display text-xl font-semibold tracking-tight text-[var(--foreground)] sm:text-2xl">
+              PM Decision Copilot
+            </h1>
+            <p className="mt-0.5 text-xs text-zinc-500 sm:text-sm max-w-2xl mx-auto">
+              Structured reasoning: problem → causes → segments → hypotheses → experiments → metrics
+            </p>
+          </header>
 
-        <div className="mb-8 flex gap-6 flex-col lg:flex-row">
-          <div className="flex-1">
-            <AnalyzeForm onResult={setData} onLoadingChange={setLoading} />
+          <div
+            className={`mb-6 sm:mb-8 flex flex-col gap-4 ${
+              hasHistory ? "lg:flex-row lg:gap-6 lg:items-start" : "items-center"
+            }`}
+          >
+            <div
+              className={`min-w-0 w-full ${hasHistory ? "flex-1" : "max-w-xl"}`}
+            >
+              <AnalyzeForm onResult={setData} onLoadingChange={setLoading} />
+            </div>
+            {hasHistory && (
+              <div className="w-full lg:w-80 lg:shrink-0">
+                <PastDecisions
+                  onSelect={setData}
+                  currentData={data}
+                  onHistoryChange={() => setHistoryVersion((v) => v + 1)}
+                />
+              </div>
+            )}
           </div>
-          <div className="w-full lg:w-80 shrink-0">
-            <PastDecisions onSelect={setData} currentData={data} />
-          </div>
-        </div>
 
-        {(loading || progress > 0) && (
-          <div className="mb-8">
-            <div className="mb-1.5 flex items-center justify-between text-sm text-zinc-400">
-              <span>Analysis in progress</span>
-              <span>{Math.round(progress)}%</span>
+          {(loading || progress > 0) && (
+          <div className="mb-6 sm:mb-8">
+            <div className="mb-1.5 flex items-center justify-between gap-2 text-xs sm:text-sm text-zinc-400">
+              <span className="min-w-0 truncate">Analysis in progress</span>
+              <span className="shrink-0">{Math.round(progress)}%</span>
             </div>
             <div className="w-full overflow-hidden rounded-lg bg-zinc-800/50 h-2">
               <div
@@ -122,38 +138,65 @@ export default function DashboardPage() {
               />
             </div>
           </div>
-        )}
+          )}
 
-        {data && (
+          {data && (
           <>
-            <section className="mb-10">
-              <div className="mb-4 flex items-center justify-between gap-4">
-                <h2 className="text-sm font-medium uppercase tracking-wider text-zinc-500">
-                  Reasoning layers
-                </h2>
-                <button
-                  type="button"
-                  onClick={() => setData(null)}
-                  className="rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-300 transition hover:bg-zinc-700 hover:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
-                >
-                  Reset
-                </button>
-              </div>
-              <DecisionLayers data={data} />
-            </section>
+            <div className="mb-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setData(null)}
+                className="rounded-lg border border-zinc-600 bg-zinc-800 px-4 py-2.5 text-sm text-zinc-300 transition hover:bg-zinc-700 hover:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500/50 active:scale-[0.98] min-h-[44px] sm:min-h-0 sm:py-1.5 sm:px-3"
+              >
+                Reset
+              </button>
+            </div>
 
-            <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
-              <div className="sm:col-span-2 xl:col-span-3">
-                <ProblemSummaryCard data={data} />
+            <div className="space-y-6 sm:space-y-8">
+              <ProblemSummaryCard data={data} />
+
+              {/* Causes → Segments → Hypotheses */}
+              <div className="rounded-xl border border-amber-500/20 bg-amber-950/10 p-2 sm:p-3">
+                <p className="mb-3 text-center text-[10px] font-medium uppercase tracking-widest text-amber-500/60 sm:text-xs">
+                  Problem analysis flow
+                </p>
+                <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-stretch sm:gap-2 xl:gap-4">
+                  <div className="min-w-0 min-h-[100px] flex-1">
+                    <CausesCard data={data} />
+                  </div>
+                  <FlowArrow className="hidden self-center sm:block" />
+                  <FlowArrow direction="down" className="self-center py-1 sm:hidden" />
+                  <div className="min-w-0 min-h-[100px] flex-1">
+                    <SegmentsCard data={data} />
+                  </div>
+                  <FlowArrow className="hidden self-center sm:block" />
+                  <FlowArrow direction="down" className="self-center py-1 sm:hidden" />
+                  <div className="min-w-0 min-h-[100px] flex-1">
+                    <HypothesesCard data={data} />
+                  </div>
+                </div>
               </div>
-              <CausesCard data={data} />
-              <SegmentsCard data={data} />
-              <HypothesesCard data={data} />
-              <ExperimentsCard data={data} />
-              <MetricsCard data={data} />
+
+              {/* Experiments → Metrics */}
+              <div className="rounded-xl border border-amber-500/20 bg-amber-950/10 p-2 sm:p-3">
+                <p className="mb-3 text-center text-[10px] font-medium uppercase tracking-widest text-amber-500/60 sm:text-xs">
+                  Experiment validation flow
+                </p>
+                <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-stretch sm:gap-2 xl:gap-4">
+                  <div className="min-w-0 min-h-[100px] flex-1">
+                    <ExperimentsCard data={data} />
+                  </div>
+                  <FlowArrow className="hidden self-center sm:block" />
+                  <FlowArrow direction="down" className="self-center py-1 sm:hidden" />
+                  <div className="min-w-0 min-h-[100px] flex-1">
+                    <MetricsCard data={data} />
+                  </div>
+                </div>
+              </div>
             </div>
           </>
-        )}
+          )}
+        </div>
       </div>
     </main>
   );
