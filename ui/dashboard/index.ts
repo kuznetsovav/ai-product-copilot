@@ -7,4 +7,3 @@ export {
   ExperimentsCard,
   MetricsCard,
 } from "./cards";
-export { DecisionLayers } from "./decision-layers";

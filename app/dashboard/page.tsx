@@ -22,7 +22,7 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(false);
   const [historyVersion, setHistoryVersion] = useState(0);
-  const hasHistory = getDecisions().length > 0;
+  const [hasHistory, setHasHistory] = useState(false);
   const [progress, setProgress] = useState(0);
   const progressStartRef = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -65,6 +65,10 @@ export default function DashboardPage() {
       return () => clearTimeout(t);
     }
   }, [loading]);
+
+  useEffect(() => {
+    setHasHistory(getDecisions().length > 0);
+  }, [historyVersion]);
 
   useEffect(() => {
     const stored = sessionStorage.getItem(INTAKE_RESULT_KEY);
