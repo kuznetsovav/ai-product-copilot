@@ -5,6 +5,7 @@ import { saveDecision } from "@/lib/store/decisions";
 
 export interface AnalyzeFormProps {
   onResult: (data: DashboardData) => void;
+  onLoadingChange?: (loading: boolean) => void;
 }
 
 export interface DashboardData {
@@ -59,7 +60,7 @@ export interface DashboardData {
   };
 }
 
-export function AnalyzeForm({ onResult }: AnalyzeFormProps) {
+export function AnalyzeForm({ onResult, onLoadingChange }: AnalyzeFormProps) {
   const [description, setDescription] = useState("");
   const [context, setContext] = useState("");
   const [loading, setLoading] = useState(false);
@@ -68,6 +69,7 @@ export function AnalyzeForm({ onResult }: AnalyzeFormProps) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
+    onLoadingChange?.(true);
     setError(null);
     try {
       const res = await fetch("/api/analyze-problem", {
@@ -86,6 +88,7 @@ export function AnalyzeForm({ onResult }: AnalyzeFormProps) {
       setError(err instanceof Error ? err.message : "Request failed");
     } finally {
       setLoading(false);
+      onLoadingChange?.(false);
     }
   }
 

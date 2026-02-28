@@ -11,3 +11,31 @@ body {
   color: var(--foreground);
   background: var(--background);
 }
+
+@keyframes reasoning-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.reasoning-layer-reveal {
+  animation: reasoning-reveal 0.35s ease-out forwards;
+}
+
+@keyframes progress-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+.progress-bar-indeterminate {
+  animation: progress-indeterminate 1.5s ease-in-out infinite;
+}

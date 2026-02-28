@@ -4,9 +4,23 @@ import { useState, useEffect } from "react";
 import {
   getDecisions,
   deleteDecision,
+  MAX_HISTORY_ITEMS,
   type StoredDecision,
 } from "@/lib/store/decisions";
 import type { DashboardData } from "./analyze-form";
+
+function getAnswerPreview(data: DashboardData): string {
+  const { structuredProblem, hypotheses, experiments } = data;
+  const parts: string[] = [];
+  parts.push(structuredProblem.funnelStage);
+  if (hypotheses.likelyCauses.length > 0)
+    parts.push(`${hypotheses.likelyCauses.length} causes`);
+  if (hypotheses.potentialSolutions.length > 0)
+    parts.push(`${hypotheses.potentialSolutions.length} solutions`);
+  if (experiments.experiments.length > 0)
+    parts.push(`${experiments.experiments.length} experiments`);
+  return parts.join(" · ");
+}
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -45,9 +59,17 @@ export function PastDecisions({
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-      <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-zinc-500">
-        Past decisions
-      </h3>
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-sm font-medium uppercase tracking-wider text-zinc-500">
+          History
+        </h3>
+        <span className="rounded bg-amber-500/20 px-2 py-0.5 text-xs font-medium text-amber-400">
+          Last {MAX_HISTORY_ITEMS} requests
+        </span>
+      </div>
+      <p className="mb-3 text-xs text-zinc-500">
+        We keep your last {MAX_HISTORY_ITEMS} analyses. Click to view.
+      </p>
       <ul className="space-y-1.5 max-h-64 overflow-y-auto">
         {decisions.map((d) => (
           <li
@@ -56,7 +78,12 @@ export function PastDecisions({
             className="group flex cursor-pointer items-center justify-between gap-2 rounded-lg border border-zinc-700/50 px-3 py-2 text-left transition hover:border-amber-500/30 hover:bg-zinc-800/50"
           >
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm text-zinc-300">{d.summary}</p>
+              <p className="truncate text-sm text-zinc-300" title={d.summary}>
+                {d.summary}
+              </p>
+              <p className="mt-0.5 truncate text-xs text-amber-400/80">
+                → {getAnswerPreview(d.data)}
+              </p>
               <p className="text-xs text-zinc-500">{formatDate(d.createdAt)}</p>
             </div>
             <button

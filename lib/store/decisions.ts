@@ -6,7 +6,7 @@
 import type { DashboardData } from "@/ui/dashboard/analyze-form";
 
 const STORAGE_KEY = "pm-past-decisions";
-const MAX_DECISIONS = 50;
+export const MAX_HISTORY_ITEMS = 10;
 
 export interface StoredDecision {
   id: string;
@@ -34,7 +34,7 @@ function getStored(): StoredDecision[] {
 function setStored(decisions: StoredDecision[]): void {
   if (typeof window === "undefined") return;
   try {
-    const trimmed = decisions.slice(0, MAX_DECISIONS);
+    const trimmed = decisions.slice(0, MAX_HISTORY_ITEMS);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
   } catch {
     // Storage full or unavailable

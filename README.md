@@ -45,11 +45,10 @@ The core issue: there is no lightweight system that turns a messy problem descri
 | **Experiments** | Test design, success metrics, expected impact |
 | **Decision** | Structured output suitable for stakeholder review |
 
-**Key flows**
+**Single entry: Dashboard**
 
-- **Intake** — PM describes the issue in `/intake`
-- **Dashboard** — Reasoning layers + detailed cards (causes, segments, hypotheses, experiments, metrics)
-- **Past decisions** — Local persistence for browsing and reusing earlier analyses
+- **Full workspace** at `/dashboard` (root `/` and `/intake` redirect here): analyze form, reasoning layers, and detailed cards (problem summary, causes, segments, hypotheses, experiments, metrics)
+- **History** — Last 10 analyses kept in the browser; click to reopen any result
 
 ---
 
@@ -83,9 +82,9 @@ The core issue: there is no lightweight system that turns a messy problem descri
 **Stack:** Next.js 14 (App Router), TypeScript, Tailwind, Server Actions, API Routes, OpenAI (GPT-4o-mini)
 
 **Folders:**
-- `/app` — Pages (intake, dashboard), API routes
-- `/ui` — Components (cards, decision layers, past decisions)
-- `/lib` — Agents, orchestrator, AI service, types, store
+- `/app` — Dashboard page, API routes (redirects from `/` and `/intake`)
+- `/ui` — Dashboard components (analyze form, cards, decision layers, history)
+- `/lib` — Agents, orchestrator, AI service, types, history store
 
 ---
 
@@ -106,7 +105,7 @@ The core issue: there is no lightweight system that turns a messy problem descri
 |--------|--------|----------------|
 | **Time to first hypothesis** | &lt; 2 min | Time from problem entry to structured output |
 | **Completeness** | 100% | All pipeline layers populated; no empty arrays where schema expects data |
-| **Reusability** | Past decisions used | Clicks on past decisions vs. new analyses |
+| **Reusability** | History used | Clicks on History (last 10) vs. new analyses |
 | **Schema compliance** | 100% | Structured outputs pass Zod validation; no free-form text fallback |
 
 ---
@@ -128,7 +127,7 @@ The core issue: there is no lightweight system that turns a messy problem descri
    npm run dev
    ```
 
-4. Open [http://localhost:3000](http://localhost:3000)
+4. Open [http://localhost:3000](http://localhost:3000) — you’ll land on the dashboard (full workspace and history).
 
 **Troubleshooting:** If you see "OPENAI_API_KEY is not set", ensure `.env.local` exists with `OPENAI_API_KEY=sk-...` (no quotes, no spaces around `=`), run `npm run check-env`, then restart the dev server.
 
@@ -144,3 +143,12 @@ The core issue: there is no lightweight system that turns a messy problem descri
 ```
 
 Returns full decision output: problem, structuredProblem, segments, hypotheses, experiments.
+
+---
+
+## Usage
+
+1. Open the app → you’re on the **dashboard**.
+2. Enter a problem description (and optional context), then **Run analysis**.
+3. View **Reasoning layers** and the cards (Problem summary, Causes, Segments, Hypotheses, Experiments, Metrics).
+4. Use **History** (last 10 requests) to reopen any previous analysis.
