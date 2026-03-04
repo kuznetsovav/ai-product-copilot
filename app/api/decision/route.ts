@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { runDecisionPipeline } from "@/lib/orchestrator";
+import { runLegacyDecisionPipeline } from "@/lib/orchestrator";
 import { ProblemInputSchema } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    const result = await runDecisionPipeline(parsed.data);
+    const result = await runLegacyDecisionPipeline(parsed.data);
     if (!result.success) {
       return NextResponse.json(
         { success: false, error: result.error },

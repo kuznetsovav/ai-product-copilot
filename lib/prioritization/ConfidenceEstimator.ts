@@ -25,9 +25,14 @@ export interface ConfidenceEstimatorInput {
   pastPatternsSummary: string;
 }
 
+function trimToMaxWords(s: string, max: number): string {
+  const words = s.trim().split(/\s+/).filter(Boolean);
+  return words.length <= max ? s.trim() : words.slice(0, max).join(" ");
+}
+
 const ConfidenceEstimationSchema = z.object({
   score: z.number().min(1).max(10),
-  explanation: z.string(),
+  explanation: z.string().transform((s) => trimToMaxWords(s, 30)),
 });
 
 type ConfidenceEstimationSchemaType = z.infer<typeof ConfidenceEstimationSchema>;
@@ -55,46 +60,15 @@ export class ConfidenceEstimator
       pastPatternsSummary,
     } = input;
 
-    const rubric = `
-You are evaluating the *confidence* in a product hypothesis on a 1–10 scale.
-
-You MUST consider:
-- evidence strength: quality, recency, and directness of supporting evidence
-- data backing the hypothesis: analytical depth, sample size, statistical strength
-- similarity to past patterns: how closely this aligns with known wins or failures
-
-Scoring (use whole numbers only):
-- 1–3  = very weak evidence (speculation, anecdotes, or conflicting signals)
-- 4–6  = moderate evidence (some data and/or research, but gaps or uncertainty remain)
-- 7–8  = strong evidence (multiple consistent sources, good data quality, clear pattern)
-- 9–10 = very strong evidence (robust data, repeated patterns, high certainty)
-
-Higher scores mean stronger overall confidence given the available evidence and data.
-`.trim();
-
-    const description = `
-Hypothesis:
-${hypothesisDescription}
-
-Evidence:
-${evidenceSummary}
-
-Data backing hypothesis:
-${dataSummary}
-
-Similarity to past patterns:
-${pastPatternsSummary}
-`.trim();
-
     const messages = [
       {
         role: "system" as const,
         content:
-          "You are a confidence estimation engine. You must respond only with structured JSON that matches the given schema. Do not use markdown.",
+          "Output JSON only. No other text. Return { score: number 1-10, explanation: string max 30 words }.",
       },
       {
         role: "user" as const,
-        content: `${rubric}\n\n${description}`,
+        content: `Score confidence in hypothesis (1-10). 1-3 weak, 4-6 moderate, 7-8 strong, 9-10 very strong. Explanation max 30 words.\n\nHypothesis: ${hypothesisDescription}\nEvidence: ${evidenceSummary}\nData: ${dataSummary}\nPast patterns: ${pastPatternsSummary}`,
       },
     ];
 

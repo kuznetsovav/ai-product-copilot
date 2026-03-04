@@ -23,9 +23,14 @@ export interface RiskAnalyzerInput {
   riskTolerance: RiskTolerance;
 }
 
+function trimToMaxWords(s: string, max: number): string {
+  const words = s.trim().split(/\s+/).filter(Boolean);
+  return words.length <= max ? s.trim() : words.slice(0, max).join(" ");
+}
+
 const RiskEstimationSchema = z.object({
   score: z.number().min(1).max(10),
-  explanation: z.string(),
+  explanation: z.string().transform((s) => trimToMaxWords(s, 30)),
 });
 
 type RiskEstimationSchemaType = z.infer<typeof RiskEstimationSchema>;
@@ -49,43 +54,15 @@ export class RiskAnalyzer implements Estimator<RiskAnalyzerInput> {
   async estimate(input: RiskAnalyzerInput): Promise<EstimationResult> {
     const { experimentDescription, productStage, riskTolerance } = input;
 
-    const rubric = `
-You are evaluating the *overall risk* of a product experiment on a 1–10 scale.
-
-You MUST consider:
-- technical risk: implementation complexity, dependencies, failure modes, data integrity
-- adoption risk: user understanding, opt-in/opt-out paths, migration or change management
-- business risk: legal/regulatory, brand, revenue, strategic positioning
-- reversibility: ease of rollback, kill switches, ability to mitigate impact quickly
-
-Context:
-- Product stage: ${productStage}
-- Organization risk tolerance: ${riskTolerance}
-
-Scoring (use whole numbers only):
-- 1–3  = low risk
-- 4–6  = moderate risk
-- 7–8  = high risk
-- 9–10 = very high risk
-
-Higher scores mean more overall risk across these dimensions, adjusted for the given
-product stage and risk tolerance.
-`.trim();
-
-    const description = `
-Experiment:
-${experimentDescription}
-`.trim();
-
     const messages = [
       {
         role: "system" as const,
         content:
-          "You are a risk analysis engine. You must respond only with structured JSON that matches the given schema. Do not use markdown.",
+          "Output JSON only. No other text. Return { score: number 1-10, explanation: string max 30 words }.",
       },
       {
         role: "user" as const,
-        content: `${rubric}\n\n${description}`,
+        content: `Score overall risk (1-10). 1-3 low, 4-6 moderate, 7-8 high, 9-10 very high. Product stage ${productStage}, risk tolerance ${riskTolerance}. Explanation max 30 words.\n\nExperiment: ${experimentDescription}`,
       },
     ];
 

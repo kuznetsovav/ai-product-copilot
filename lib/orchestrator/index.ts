@@ -1,12 +1,17 @@
 /**
  * Orchestrator Layer
- * Coordinates agents and pipeline stages to produce end-to-end decision support.
+ * Decision pipeline: Input problem → UnifiedAnalysisAgent → ExperimentScoringAgent
+ * → PrioritizationEngine (pure code) → DecisionOutput.
  */
 
 export {
+  runDecisionPipeline,
   runDecisionPipeline as runStructuredDecisionPipeline,
-  type PipelineDecisionOutput,
-  type PipelineStage,
+} from "./decision-pipeline";
+export type {
+  DecisionPipelineInput,
+  DecisionOutput,
+  PipelineStage,
 } from "./decision-pipeline";
 
 import { analyzeProblem } from "@/lib/agents/problem-analyzer";
@@ -25,16 +30,18 @@ export interface OrchestratorResult {
 }
 
 /**
- * Runs the full decision-support pipeline: problem analysis → framework generation.
+ * Legacy pipeline: problem analysis → framework generation.
+ * Used by decision route / actions.
  */
-export async function runDecisionPipeline(input: ProblemInput): Promise<OrchestratorResult> {
+export async function runLegacyDecisionPipeline(
+  input: ProblemInput
+): Promise<OrchestratorResult> {
   const context: PipelineContext = {
     problemInput: input,
     stage: "problem_analysis",
     metadata: { startedAt: new Date().toISOString() },
   };
 
-  // Stage 1: Problem Analysis
   const analysisResult = await analyzeProblem(input);
   if (!analysisResult.success || !analysisResult.data) {
     return {
@@ -46,8 +53,9 @@ export async function runDecisionPipeline(input: ProblemInput): Promise<Orchestr
   context.structuredProblem = analysisResult.data as StructuredProblem;
   context.stage = "framework_generation";
 
-  // Stage 2: Decision Framework
-  const frameworkResult = await generateDecisionFramework(context.structuredProblem);
+  const frameworkResult = await generateDecisionFramework(
+    context.structuredProblem
+  );
   if (!frameworkResult.success || !frameworkResult.data) {
     return {
       success: false,

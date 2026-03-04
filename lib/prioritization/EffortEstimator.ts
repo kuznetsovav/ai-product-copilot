@@ -20,9 +20,14 @@ export interface EffortEstimatorInput {
   teamSize: number;
 }
 
+function trimToMaxWords(s: string, max: number): string {
+  const words = s.trim().split(/\s+/).filter(Boolean);
+  return words.length <= max ? s.trim() : words.slice(0, max).join(" ");
+}
+
 const EffortEstimationSchema = z.object({
   score: z.number().min(1).max(10),
-  explanation: z.string(),
+  explanation: z.string().transform((s) => trimToMaxWords(s, 30)),
 });
 
 type EffortEstimationSchemaType = z.infer<typeof EffortEstimationSchema>;
@@ -40,36 +45,15 @@ export class EffortEstimator implements Estimator<EffortEstimatorInput> {
   async estimate(input: EffortEstimatorInput): Promise<EstimationResult> {
     const { experimentScope, engineeringCapacity, teamSize } = input;
 
-    const rubric = `
-You are estimating *implementation effort* for a product experiment on a 1–10 scale.
-
-Scoring rubric (use whole numbers only):
-- 1–3: small UI tweak (very limited scope, minimal risk, can be shipped quickly)
-- 4–6: moderate backend work (non-trivial changes to APIs, data models, or jobs)
-- 7–8: cross-functional change (meaningful coordination across multiple teams or surfaces)
-- 9–10: large infra or architecture change (deep platform work, migrations, or risky refactors)
-
-Consider:
-- Breadth and depth of systems/components touched
-- Need for data migrations or backfills
-- Coordination complexity across teams
-- How the estimated effort relates to the available engineering capacity (${engineeringCapacity}) and team size (${teamSize}).
-`.trim();
-
-    const description = `
-Experiment scope:
-${experimentScope}
-`.trim();
-
     const messages = [
       {
         role: "system" as const,
         content:
-          "You are an effort estimation engine. You must respond only with structured JSON that matches the given schema. Do not use markdown.",
+          "Output JSON only. No other text. Return { score: number 1-10, explanation: string max 30 words }.",
       },
       {
         role: "user" as const,
-        content: `${rubric}\n\n${description}`,
+        content: `Score implementation effort (1-10). 1-3 small, 4-6 moderate, 7-8 cross-functional, 9-10 large/infra. Capacity ${engineeringCapacity}, team ${teamSize}. Explanation max 30 words.\n\nScope: ${experimentScope}`,
       },
     ];
 

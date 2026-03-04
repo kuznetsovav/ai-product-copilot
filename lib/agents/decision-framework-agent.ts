@@ -12,15 +12,9 @@ import type {
 } from "@/lib/types";
 import { DecisionFrameworkSchema } from "@/lib/types";
 
-const SYSTEM_PROMPT = `You are an expert product strategist specializing in decision frameworks.
+const SYSTEM_PROMPT = `Output JSON only. No other text.
 
-Given a structured problem, produce:
-1. A crisp decision statement (what we're deciding)
-2. 2-5 distinct options with pros, cons, risks, effort
-3. A clear recommendation with reasoning and confidence (0-1)
-4. Concrete next steps
-
-Options should be actionable and distinct. Effort: low/medium/high/unknown.`;
+From the structured problem produce: problemSummary, decisionStatement, options (array: id, title, description, pros[], cons[], risks[], effort), recommendation (optionId, reasoning, confidence 0-1), nextSteps (array). Effort: low/medium/high/unknown.`;
 
 export async function generateDecisionFramework(
   problem: StructuredProblem,
@@ -41,7 +35,7 @@ export async function generateDecisionFramework(
         },
         {
           role: "user",
-          content: `Respond with JSON only. Schema: {"problemSummary":"...","decisionStatement":"...","options":[{"id":"A","title":"...","description":"...","pros":[],"cons":[],"risks":[],"effort":"medium"}],"recommendation":{"optionId":"A","reasoning":"...","confidence":0.8},"nextSteps":[]}`,
+          content: `JSON only. Schema: {"problemSummary":"...","decisionStatement":"...","options":[{"id":"A","title":"...","description":"...","pros":[],"cons":[],"risks":[],"effort":"medium"}],"recommendation":{"optionId":"A","reasoning":"...","confidence":0.8},"nextSteps":[]}`,
         },
       ],
       response_format: { type: "json_object" },

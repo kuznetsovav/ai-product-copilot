@@ -13,9 +13,14 @@ export interface ImpactEstimatorInput {
   productStage: ProductStage;
 }
 
+function trimToMaxWords(s: string, max: number): string {
+  const words = s.trim().split(/\s+/).filter(Boolean);
+  return words.length <= max ? s.trim() : words.slice(0, max).join(" ");
+}
+
 const ImpactEstimationSchema = z.object({
   score: z.number().min(1).max(10),
-  explanation: z.string(),
+  explanation: z.string().transform((s) => trimToMaxWords(s, 30)),
 });
 
 type ImpactEstimationSchemaType = z.infer<typeof ImpactEstimationSchema>;
@@ -35,38 +40,15 @@ export class ImpactEstimator
   async estimate(input: ImpactEstimatorInput): Promise<EstimationResult> {
     const { experiment, northStarMetric, productStage } = input;
 
-    const rubric = `
-You are scoring the *impact* of a single product experiment on a 1–10 scale.
-
-Scoring rubric (use whole numbers only):
-- 1–3: marginal impact (small, local improvement, barely moves ${northStarMetric})
-- 4–6: moderate improvement (meaningful but not game-changing movement in ${northStarMetric})
-- 7–8: strong improvement (clearly moves ${northStarMetric} in a major way for the ${productStage} stage)
-- 9–10: transformative (step-change impact on ${northStarMetric}, reshapes the trajectory at the ${productStage} stage)
-
-Consider:
-- How directly the experiment influences ${northStarMetric}
-- The breadth of users/segments affected
-- Whether the effect compounds over time
-- Whether the impact is appropriate for a ${productStage} product.
-`.trim();
-
-    const description = `
-Experiment:
-- ID: ${experiment.id}
-- Title: ${experiment.title}
-- Description: ${experiment.description}
-`.trim();
-
     const messages = [
       {
         role: "system" as const,
         content:
-          "You are an impact estimation engine. You must respond only with structured JSON that matches the given schema. Do not use markdown.",
+          "Output JSON only. No other text. Return { score: number 1-10, explanation: string max 30 words }.",
       },
       {
         role: "user" as const,
-        content: `${rubric}\n\n${description}`,
+        content: `Score impact (1-10) on ${northStarMetric} for ${productStage}. 1-3 marginal, 4-6 moderate, 7-8 strong, 9-10 transformative. Explanation max 30 words.\n\nExperiment: ${experiment.id} / ${experiment.title}\n${experiment.description}`,
       },
     ];
 

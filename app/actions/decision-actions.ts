@@ -5,7 +5,7 @@
  * Invokes orchestrator and returns structured results.
  */
 
-import { runDecisionPipeline } from "@/lib/orchestrator";
+import { runLegacyDecisionPipeline } from "@/lib/orchestrator";
 import type { ProblemInput } from "@/lib/types";
 
 export interface DecisionActionResult {
@@ -41,7 +41,7 @@ export interface DecisionActionResult {
 export async function processProblemDecision(
   input: ProblemInput
 ): Promise<DecisionActionResult> {
-  const result = await runDecisionPipeline(input);
+  const result = await runLegacyDecisionPipeline(input);
   if (!result.success) {
     return { success: false, error: result.error };
   }

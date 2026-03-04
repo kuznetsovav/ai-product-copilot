@@ -12,17 +12,9 @@ import type {
 } from "@/lib/types";
 import { StructuredProblemSchema } from "@/lib/types";
 
-const SYSTEM_PROMPT = `You are an expert product strategist. Your role is to help Product Managers structure vague problems into clear, actionable definitions.
+const SYSTEM_PROMPT = `Output JSON only. No other text.
 
-Given a raw problem statement, extract:
-- coreQuestion: The central decision or question to answer
-- keyStakeholders: Who is impacted or involved
-- successCriteria: What good looks like
-- constraints: Limits we must work within
-- assumptions: What we're taking as given
-- uncertaintyAreas: What we don't know yet
-
-Be precise and product-focused. Avoid generic answers.`;
+Extract from the problem: coreQuestion, keyStakeholders (array), successCriteria (array), constraints (array), assumptions (array), uncertaintyAreas (array). Include rawStatement.`;
 
 export async function analyzeProblem(
   input: ProblemInput,
@@ -44,7 +36,7 @@ export async function analyzeProblem(
         },
         {
           role: "user",
-          content: `Respond with JSON only matching this schema: {"rawStatement":"...","coreQuestion":"...","keyStakeholders":[],"successCriteria":[],"constraints":[],"assumptions":[],"uncertaintyAreas":[]}`,
+          content: `JSON only. Schema: {"rawStatement":"...","coreQuestion":"...","keyStakeholders":[],"successCriteria":[],"constraints":[],"assumptions":[],"uncertaintyAreas":[]}`,
         },
       ],
       response_format: { type: "json_object" },

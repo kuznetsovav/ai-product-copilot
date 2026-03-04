@@ -1,26 +1,92 @@
 /**
  * API Route: POST /api/analyze-problem
- * Input: problem description
- * Output: DecisionOutput (pipeline result)
+ * Input: problem (or description), optional context (string or { northStarMetric?, productStage? })
+ * Output: DecisionOutput + legacy-compatible shape for existing UI
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { runStructuredDecisionPipeline } from "@/lib/orchestrator";
-import type {
-  PrioritizationContext,
-  PrioritizedExperiment,
-} from "@/lib/types/prioritization";
-import {
-  PrioritizationEngine,
-  type PrioritizationExperimentInput,
-} from "@/lib/prioritization/PrioritizationEngine";
-import { RiceModel } from "@/lib/prioritization/ScoringModel";
 
 const AnalyzeProblemInputSchema = z.object({
-  description: z.string().min(1, "Problem description is required"),
-  context: z.string().optional(),
+  problem: z.string().min(1).optional(),
+  description: z.string().min(1).optional(),
+  context: z.union([
+    z.string(),
+    z.object({
+      northStarMetric: z.string().optional(),
+      productStage: z.string().optional(),
+    }),
+  ]).optional(),
+}).refine((data) => data.problem ?? data.description, {
+  message: "problem or description is required",
 });
+
+/** Map pipeline DecisionOutput to legacy DashboardData shape for existing UI. */
+function toLegacyResponseShape(
+  decisionOutput: {
+    problem: string;
+    analysis: {
+      problem_summary: string;
+      segments: Array<{ name: string; description: string }>;
+      root_causes: Array<{ cause: string; explanation: string }>;
+      hypotheses: Array<{ hypothesis: string }>;
+      experiments: Array<{ id: string; title: string; description: string }>;
+    };
+    prioritizedExperiments: Array<unknown>;
+  },
+  requestContext?: string
+) {
+  const { problem, analysis, prioritizedExperiments } = decisionOutput;
+  return {
+    problem: {
+      description: problem,
+      context: requestContext,
+    },
+    structuredProblem: {
+      funnelStage: "unknown",
+      likelyFrictionPoints: analysis.problem_summary
+        ? [analysis.problem_summary.slice(0, 200)]
+        : [],
+      intentMismatch: {
+        userExpectation: "",
+        productReality: "",
+        gap: analysis.problem_summary ?? "",
+      },
+    },
+    segments: {
+      behavioralSegments: analysis.segments.map((s, i) => ({
+        id: `seg-${i}`,
+        name: s.name,
+        description: s.description,
+        criteria: [],
+      })),
+      lifecycleSegments: [],
+      intentBasedSegments: [],
+    },
+    hypotheses: {
+      likelyCauses: analysis.root_causes.map((c, i) => ({
+        id: `cause-${i}`,
+        description: `${c.cause}: ${c.explanation}`,
+        likelihood: "medium" as const,
+      })),
+      potentialSolutions: [],
+    },
+    experiments: {
+      experiments: analysis.experiments.map((e) => ({
+        id: e.id,
+        name: e.title,
+        design: e.description,
+      })),
+      successMetrics: [],
+      expectedImpact: analysis.experiments.map((e) => ({
+        experimentId: e.id,
+        description: e.description,
+      })),
+    },
+    prioritizedExperiments,
+  };
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,159 +99,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const decisionOutput = await runStructuredDecisionPipeline(parsed.data);
+    const { problem, description, context } = parsed.data;
+    const problemText = problem ?? description!;
+    const contextObj =
+      context && typeof context === "object"
+        ? context
+        : undefined;
 
-    let prioritizedExperiments: PrioritizedExperiment[] | null = null;
-    let prioritizationError: string | null = null;
+    const decisionOutput = await runStructuredDecisionPipeline({
+      problem: problemText,
+      context: contextObj,
+    });
 
-    try {
-      const engine = new PrioritizationEngine({
-        scoringModel: new RiceModel(),
-      });
-
-      const funnelStage =
-        decisionOutput.structuredProblem?.funnelStage ?? "unknown";
-
-      const northStarMetric = (() => {
-        switch (funnelStage) {
-          case "awareness":
-            return "top-of-funnel reach";
-          case "consideration":
-            return "consideration-to-signup rate";
-          case "conversion":
-            return "signup conversion rate";
-          case "activation":
-            return "activation rate";
-          case "retention":
-            return "retention / DAU/MAU";
-          case "expansion":
-            return "expansion revenue";
-          case "advocacy":
-            return "referral / NPS-driven growth";
-          default:
-            return "primary product north star metric";
-        }
-      })();
-
-      const context: PrioritizationContext = {
-        northStarMetric,
-        productStage: "growth",
-        teamSize: 8,
-        engineeringCapacity: 5,
-        riskTolerance: "medium",
-      };
-
-      const { experiments, hypotheses, structuredProblem } =
-        decisionOutput;
-
-      const causesById = new Map(
-        hypotheses.likelyCauses.map((c) => [c.id, c])
-      );
-      const solutionsById = new Map(
-        hypotheses.potentialSolutions.map((s) => [s.id, s])
-      );
-      const expectedImpactByExperiment = new Map(
-        experiments.expectedImpact.map((ei) => [ei.experimentId, ei])
-      );
-
-      const prioritizedInput: PrioritizationExperimentInput[] =
-        experiments.experiments.map((exp) => {
-          const linkedCauses =
-            exp.causeIds?.map((id) => causesById.get(id)?.description ?? id) ??
-            [];
-
-          const solution = exp.solutionId
-            ? solutionsById.get(exp.solutionId)
-            : undefined;
-
-          const expectedImpact = expectedImpactByExperiment.get(exp.id);
-          const expectedImpactParts: string[] = [];
-          if (expectedImpact?.description) {
-            expectedImpactParts.push(expectedImpact.description);
-          }
-          if (expectedImpact?.magnitude) {
-            expectedImpactParts.push(`Magnitude: ${expectedImpact.magnitude}`);
-          }
-          if (expectedImpact?.confidence) {
-            expectedImpactParts.push(
-              `Confidence: ${expectedImpact.confidence}`
-            );
-          }
-
-          const hypothesisLines: string[] = [];
-          if (solution?.description) {
-            hypothesisLines.push(`Solution: ${solution.description}`);
-          }
-          if (linkedCauses.length > 0) {
-            hypothesisLines.push(
-              `Addresses causes: ${linkedCauses.join("; ")}`
-            );
-          }
-          if (expectedImpactParts.length > 0) {
-            hypothesisLines.push(
-              `Expected impact: ${expectedImpactParts.join(" | ")}`
-            );
-          }
-          if (hypothesisLines.length === 0) {
-            hypothesisLines.push(
-              `Hypothesis derived from problem gap: ${structuredProblem.intentMismatch.gap}`
-            );
-          }
-
-          const frictionPreview =
-            structuredProblem.likelyFrictionPoints.slice(0, 3).join("; ");
-
-          const evidenceSummary = [
-            frictionPreview &&
-              `Friction points: ${frictionPreview}`,
-            linkedCauses.length > 0 &&
-              `Root causes considered: ${linkedCauses.length}`,
-          ]
-            .filter(Boolean)
-            .join(" | ");
-
-          const dataSummary =
-            "Decision support is based on structured reasoning from the problem description; no historical experiment data was provided.";
-
-          const pastPatternsSummary =
-            "Similarity to past patterns is inferred qualitatively from funnel stage and causes; no explicit prior experiment catalog was provided.";
-
-          const scopeLines: string[] = [
-            `Design: ${exp.design}`,
-          ];
-          if (exp.duration) {
-            scopeLines.push(`Duration: ${exp.duration}`);
-          }
-          if (solution?.id) {
-            scopeLines.push(`Linked solution: ${solution.id}`);
-          }
-
-          return {
-            id: exp.id,
-            title: exp.name,
-            description: exp.design,
-            scope: scopeLines.join("\n"),
-            hypothesis: hypothesisLines.join("\n"),
-            evidenceSummary,
-            dataSummary,
-            pastPatternsSummary,
-          };
-        });
-
-      prioritizedExperiments =
-        prioritizedInput.length > 0
-          ? await engine.prioritize(prioritizedInput, context)
-          : [];
-    } catch (err) {
-      prioritizationError =
-        err instanceof Error ? err.message : "Prioritization failed";
-    }
-
+    const requestContextStr =
+      typeof context === "string" ? context : undefined;
+    const legacy = toLegacyResponseShape(decisionOutput, requestContextStr);
     return NextResponse.json({
       success: true,
       ...decisionOutput,
-      prioritizedExperiments,
-      prioritizationError: prioritizationError ?? undefined,
+      ...legacy,
     });
   } catch (error) {
     return NextResponse.json(

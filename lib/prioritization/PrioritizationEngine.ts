@@ -1,159 +1,145 @@
 import type {
-  PrioritizationContext,
   PrioritizedExperiment,
+  SensitivityRange,
 } from "@/lib/types/prioritization";
-import type { ScoringModel } from "./ScoringModel";
-import { computeSensitivityRange } from "./Sensitivity";
-import {
-  ImpactEstimator,
-  type ImpactEstimatorInput,
-} from "./ImpactEstimator";
-import {
-  EffortEstimator,
-  type EffortEstimatorInput,
-} from "./EffortEstimator";
-import {
-  RiskAnalyzer,
-  type RiskAnalyzerInput,
-} from "./RiskAnalyzer";
-import {
-  ConfidenceEstimator,
-  type ConfidenceEstimatorInput,
-} from "./ConfidenceEstimator";
 
 /**
- * Minimal experiment shape required by the prioritization engine.
- * Callers can adapt their own domain models into this input.
+ * Experiment scores for one item (e.g. from ExperimentScoringAgent).
+ * All scores 1–10.
+ */
+export interface PrecomputedScores {
+  impactScore: number;
+  effortScore: number;
+  riskScore: number;
+  confidenceScore: number;
+  impactExplanation?: string;
+  effortExplanation?: string;
+  riskExplanation?: string;
+  confidenceExplanation?: string;
+}
+
+/**
+ * Minimal experiment shape for prioritization.
+ * Callers pass this plus scores to get ranked output.
  */
 export interface PrioritizationExperimentInput {
   id: string;
   title: string;
   description: string;
-
-  /** Scope of implementation: systems, components, integrations, etc. */
-  scope: string;
-
-  /** Hypothesis statement being tested by this experiment. */
-  hypothesis: string;
-
-  /** Qualitative/quantitative evidence summary supporting the hypothesis. */
-  evidenceSummary: string;
-
-  /** Key data backing the hypothesis (funnels, metrics, experiment reads). */
-  dataSummary: string;
-
-  /** How similar this is to past patterns or prior experiments. */
-  pastPatternsSummary: string;
-}
-
-export interface PrioritizationEngineDeps {
-  scoringModel: ScoringModel;
-  impactEstimator?: ImpactEstimator;
-  effortEstimator?: EffortEstimator;
-  riskAnalyzer?: RiskAnalyzer;
-  confidenceEstimator?: ConfidenceEstimator;
+  scope?: string;
+  hypothesis?: string;
+  evidenceSummary?: string;
+  dataSummary?: string;
+  pastPatternsSummary?: string;
 }
 
 /**
- * Orchestrates the full prioritization pipeline:
- * - runs all estimators for each experiment
- * - applies the selected scoring model
- * - computes a simple sensitivity range
- * - returns a sorted list of PrioritizedExperiment objects
+ * Composite score formula: (impact * confidence) / effort * (1 - risk/20)
+ * Scores are 1–10; effort is clamped to >= 1 to avoid division by zero.
+ */
+function computeCompositeScore(
+  impact: number,
+  effort: number,
+  confidence: number,
+  risk: number
+): number {
+  const safeEffort = Math.max(1, effort);
+  const riskFactor = 1 - Math.min(Math.max(risk, 0), 20) / 20;
+  return (impact * confidence) / safeEffort * riskFactor;
+}
+
+/**
+ * Sensitivity range by varying impact and effort ±20%; confidence and risk fixed.
+ */
+function computeSensitivityRange(
+  impact: number,
+  effort: number,
+  confidence: number,
+  risk: number
+): SensitivityRange {
+  const factors = [0.8, 1, 1.2];
+  let minScore = Infinity;
+  let maxScore = -Infinity;
+  for (const iF of factors) {
+    for (const eF of factors) {
+      const score = computeCompositeScore(
+        impact * iF,
+        Math.max(1, effort * eF),
+        confidence,
+        risk
+      );
+      if (Number.isFinite(score)) {
+        minScore = Math.min(minScore, score);
+        maxScore = Math.max(maxScore, score);
+      }
+    }
+  }
+  return {
+    minScore: Number.isFinite(minScore) ? minScore : 0,
+    maxScore: Number.isFinite(maxScore) ? maxScore : 0,
+  };
+}
+
+/**
+ * Prioritization engine: pure code, no LLM.
+ * Receives experiment scores, computes composite score, sorts, returns ranked list.
  */
 export class PrioritizationEngine {
-  private readonly impactEstimator: ImpactEstimator;
-  private readonly effortEstimator: EffortEstimator;
-  private readonly riskAnalyzer: RiskAnalyzer;
-  private readonly confidenceEstimator: ConfidenceEstimator;
-
-  constructor(private readonly deps: PrioritizationEngineDeps) {
-    this.impactEstimator = deps.impactEstimator ?? new ImpactEstimator();
-    this.effortEstimator = deps.effortEstimator ?? new EffortEstimator();
-    this.riskAnalyzer = deps.riskAnalyzer ?? new RiskAnalyzer();
-    this.confidenceEstimator =
-      deps.confidenceEstimator ?? new ConfidenceEstimator();
-  }
-
-  async prioritize(
+  /**
+   * Prioritize using precomputed scores.
+   * 1. Compute composite score: (impact * confidence) / effort * (1 - risk/20)
+   * 2. Sort by composite score descending
+   * 3. Return ranked experiments
+   */
+  prioritizeWithPrecomputedScores(
     experiments: PrioritizationExperimentInput[],
-    context: PrioritizationContext
-  ): Promise<PrioritizedExperiment[]> {
+    _context: unknown,
+    scoresByExperimentId: Map<string, PrecomputedScores>
+  ): PrioritizedExperiment[] {
     const results: PrioritizedExperiment[] = [];
 
     for (const experiment of experiments) {
-      const impactInput: ImpactEstimatorInput = {
-        experiment: {
-          id: experiment.id,
-          title: experiment.title,
-          description: experiment.description,
-        },
-        northStarMetric: context.northStarMetric,
-        productStage: context.productStage,
-      };
+      const scores = scoresByExperimentId.get(experiment.id);
+      if (!scores) continue;
 
-      const effortInput: EffortEstimatorInput = {
-        experimentScope: experiment.scope,
-        engineeringCapacity: context.engineeringCapacity,
-        teamSize: context.teamSize,
-      };
-
-      const riskInput: RiskAnalyzerInput = {
-        experimentDescription: experiment.description,
-        productStage: context.productStage,
-        riskTolerance: context.riskTolerance,
-      };
-
-      const confidenceInput: ConfidenceEstimatorInput = {
-        hypothesisDescription: experiment.hypothesis,
-        evidenceSummary: experiment.evidenceSummary,
-        dataSummary: experiment.dataSummary,
-        pastPatternsSummary: experiment.pastPatternsSummary,
-      };
-
-      // Run all estimators in parallel for this experiment
-      const [impact, effort, risk, confidence] = await Promise.all([
-        this.impactEstimator.estimate(impactInput),
-        this.effortEstimator.estimate(effortInput),
-        this.riskAnalyzer.estimate(riskInput),
-        this.confidenceEstimator.estimate(confidenceInput),
-      ]);
-
-      const compositeScore = this.deps.scoringModel.compute(
-        impact.score,
-        effort.score,
-        confidence.score,
-        risk.score
+      const compositeScore = computeCompositeScore(
+        scores.impactScore,
+        scores.effortScore,
+        scores.confidenceScore,
+        scores.riskScore
       );
 
-      const sensitivity = computeSensitivityRange(
-        impact.score,
-        effort.score,
-        confidence.score,
-        risk.score,
-        this.deps.scoringModel
+      const sensitivityRange = computeSensitivityRange(
+        scores.impactScore,
+        scores.effortScore,
+        scores.confidenceScore,
+        scores.riskScore
       );
 
       const reasoningParts = [
-        `Impact: ${impact.explanation}`,
-        `Effort: ${effort.explanation}`,
-        `Risk: ${risk.explanation}`,
-        `Confidence: ${confidence.explanation}`,
-      ];
+        scores.impactExplanation && `Impact: ${scores.impactExplanation}`,
+        scores.effortExplanation && `Effort: ${scores.effortExplanation}`,
+        scores.riskExplanation && `Risk: ${scores.riskExplanation}`,
+        scores.confidenceExplanation &&
+          `Confidence: ${scores.confidenceExplanation}`,
+      ].filter(Boolean);
+      const reasoning =
+        reasoningParts.length > 0
+          ? reasoningParts.join("\n\n")
+          : `Impact ${scores.impactScore}, Effort ${scores.effortScore}, Risk ${scores.riskScore}, Confidence ${scores.confidenceScore}.`;
 
       results.push({
         experimentId: experiment.id,
-        impactScore: impact.score,
-        effortScore: effort.score,
-        riskScore: risk.score,
-        confidenceScore: confidence.score,
+        impactScore: scores.impactScore,
+        effortScore: scores.effortScore,
+        riskScore: scores.riskScore,
+        confidenceScore: scores.confidenceScore,
         compositeScore,
-        reasoning: reasoningParts.join("\n\n"),
-        sensitivityRange: sensitivity,
+        reasoning,
+        sensitivityRange,
       });
     }
 
     return results.sort((a, b) => b.compositeScore - a.compositeScore);
   }
 }
-
