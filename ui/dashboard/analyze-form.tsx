@@ -1,7 +1,8 @@
-"use client";
+ "use client";
 
 import { useState } from "react";
 import { saveDecision } from "@/lib/store/decisions";
+import type { PrioritizedExperiment } from "@/lib/types/prioritization";
 
 export interface AnalyzeFormProps {
   onResult: (data: DashboardData) => void;
@@ -58,6 +59,8 @@ export interface DashboardData {
       confidence?: string;
     }>;
   };
+  prioritizedExperiments?: PrioritizedExperiment[] | null;
+  prioritizationError?: string;
 }
 
 const PROMPT_TIPS = `• Be specific: Include metrics (e.g. "70% drop off"), funnel stage, and user segment

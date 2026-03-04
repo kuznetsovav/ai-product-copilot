@@ -1,154 +1,175 @@
-# PM Decision Copilot — Product Case Study
+# AI Product Copilot
 
-AI-powered decision-support system that helps Product Managers move from vague product problems to structured, actionable decisions.
+AI Product Copilot is a structured decision-support system that helps Product Managers transform vague product problems into structured insights and prioritized action plans.
 
----
+Unlike a chatbot, the copilot runs a multi-stage reasoning and prioritization pipeline to produce artifacts that look and feel like the outputs of a real product team.
 
-## Problem
-
-Product Managers regularly face ill-defined problems: "Users are dropping off somewhere," "We don't know why conversion is low," "Onboarding feels broken." These fuzzy statements resist clear framing and lead to:
-
-- **Unstructured exploration** — Ad-hoc Slack threads, fragmented docs, misaligned mental models
-- **Slow decisions** — Repeated cycles of "we need more data" without a clear path to action
-- **Weak hypotheses** — Generic solutions instead of segment-specific, testable hypotheses
-- **Missed intent gaps** — User expectation vs. product reality often overlooked until late
-
-The core issue: there is no lightweight system that turns a messy problem description into a structured reasoning chain (causes → segments → hypotheses → experiments) without heavy process or long meetings.
+This project explores how AI can support product decision-making using structured reasoning and prioritization models similar to those used by experienced PMs.
 
 ---
 
-## Users
+## Product Description
 
-**Primary: Product Managers**
+AI Product Copilot is designed for Product Managers who need to move from:
 
-- Need to go from "something is wrong" to a clear decision framework
-- Want speed without sacrificing rigor
-- Prefer structured output over chat for sharing with stakeholders
-- Often work alone or in small pods; no dedicated analytics team
+- “Something is wrong with activation”
+- “Conversion is low but we don’t know why”
+- “Onboarding feels broken”
 
-**Secondary: Growth / UX / Data PMs**
+to a **clear, structured decision** about what to do next.
 
-- Use the system to align on problem framing before diving into dashboards or experiments
+You provide a problem description (and optional context such as product stage, team size, or risk tolerance). The system:
 
----
+1. Structures the problem into a consistent representation.
+2. Generates hypotheses, experiments, and metrics.
+3. Prioritizes experiments using explicit scoring models.
+4. Surfaces a recommended next experiment and a ranked backlog.
 
-## Solution
-
-**PM Decision Copilot** is a structured reasoning pipeline — not a chatbot. A PM enters a problem description; the system produces:
-
-| Layer | Output |
-|-------|--------|
-| **Problem** | Raw issue as stated |
-| **Structuring** | Funnel stage, friction points, intent mismatch |
-| **Segmentation** | Behavioral, lifecycle, intent-based segments |
-| **Hypothesis** | Likely causes and potential solutions |
-| **Experiments** | Test design, success metrics, expected impact |
-| **Decision** | Structured output suitable for stakeholder review |
-
-**Single entry: Dashboard**
-
-- **Full workspace** at `/dashboard` (root `/` and `/intake` redirect here): analyze form, reasoning layers, and detailed cards (problem summary, causes, segments, hypotheses, experiments, metrics)
-- **History** — Last 10 analyses kept in the browser; click to reopen any result
+The output is intentionally non-chatty: you get structured JSON and a dashboard-style UI, not a conversational transcript.
 
 ---
 
-## Architecture
+## What the Copilot Provides
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Problem Input                              │
-└─────────────────────────────┬───────────────────────────────────┘
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Pipeline Orchestrator                                            │
-│  Problem → Structuring → Segmentation → Hypothesis → Experiment   │
-└─────────────────────────────┬───────────────────────────────────┘
-                              │
-         ┌────────────────────┼────────────────────┐
-         ▼                    ▼                    ▼
-┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
-│ Problem         │  │ Segmentation    │  │ Experiment      │
-│ Structuring     │  │ Agent           │  │ Agent           │
-│ Agent           │  │                 │  │                 │
-└────────┬────────┘  └────────┬────────┘  └────────┬────────┘
-         │                    │                    │
-         └────────────────────┼────────────────────┘
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  AI Service (OpenAI) — Structured outputs only, JSON schema      │
-└─────────────────────────────────────────────────────────────────┘
-```
+Given a single product problem input, the copilot produces a set of layered, structured outputs:
 
-**Stack:** Next.js 14 (App Router), TypeScript, Tailwind, Server Actions, API Routes, OpenAI (GPT-4o-mini)
+- **Problem structuring**  
+  - Funnel stage (e.g. awareness, activation, retention)  
+  - Key friction points  
+  - Intent mismatch between user expectation and product reality
 
-**Folders:**
-- `/app` — Dashboard page, API routes (redirects from `/` and `/intake`)
-- `/ui` — Dashboard components (analyze form, cards, decision layers, history)
-- `/lib` — Agents, orchestrator, AI service, types, history store
+- **User segmentation**  
+  - Behavioral segments  
+  - Lifecycle segments  
+  - Intent-based segments
 
----
+- **Root cause hypotheses**  
+  - Likely causes of the problem  
+  - Links from causes to affected segments
 
-## Tradeoffs
+- **Experiment ideas**  
+  - Concrete experiments to validate solutions  
+  - Each with a design, optional duration, and linked causes/solutions
 
-| Tradeoff | Choice | Rationale |
-|----------|--------|-----------|
-| **Chat vs. structured** | Structured pipeline | PMs need shareable artifacts and fast scanning; chat is exploratory, not decisive |
-| **General vs. specific agents** | 4 specialized agents | Problem structuring, segmentation, hypothesis, and experiment design need different prompts and schemas |
-| **localStorage vs. server DB** | localStorage | Simpler deployment, no auth; works across devices via URL sharing patterns later |
-| **GPT-4o vs. GPT-4o-mini** | GPT-4o-mini | Cost/speed; structured outputs keep quality high enough for internal use |
+- **Prioritized experiments**  
+  - Per-experiment scores for impact, effort, risk, and confidence  
+  - Composite prioritization score per experiment
+
+- **Sensitivity analysis**  
+  - Sensitivity range per experiment, showing how rankings change under ±20% shifts in impact and effort
+
+- **Recommended focus experiment**  
+  - A single highlighted experiment chosen based on composite score  
+  - Includes short executive summary, dimensional scores, and attached segments/causes/hypotheses
+
+Experiments are always ranked based on four dimensions:
+
+- **Impact** — how much the experiment could move the chosen metric
+- **Effort** — expected implementation and coordination cost
+- **Risk** — technical, adoption, and business risk
+- **Confidence** — strength of evidence and similarity to past patterns
 
 ---
 
-## Metrics
+## Decision Engine
 
-| Metric | Target | How to measure |
-|--------|--------|----------------|
-| **Time to first hypothesis** | &lt; 2 min | Time from problem entry to structured output |
-| **Completeness** | 100% | All pipeline layers populated; no empty arrays where schema expects data |
-| **Reusability** | History used | Clicks on History (last 10) vs. new analyses |
-| **Schema compliance** | 100% | Structured outputs pass Zod validation; no free-form text fallback |
+At the core of AI Product Copilot is a decision engine that turns estimates into rankings.
 
----
+Each experiment receives four scalar scores:
 
-## Setup
+- **Impact** — 1–10, based on how directly and strongly the experiment influences the north star metric.
+- **Effort** — 1–10, reflecting implementation scope, dependencies, and required capacity.
+- **Risk** — 1–10, combining technical, adoption, and business risk, adjusted for reversibility.
+- **Confidence** — 1–10, capturing evidence strength, data quality, and similarity to known patterns.
 
-1. **Node.js 18+**
+On top of these dimensions, the engine can apply different **scoring models**, such as:
 
-2. Add your OpenAI API key:
-   ```bash
-   cp .env.example .env.local
-   # Edit .env.local and set OPENAI_API_KEY=sk-your-actual-key
-   npm run check-env   # verify it's set
-   ```
+- **RICE-style** (risk-adjusted):  
+  `(Impact × Confidence / Effort) × RiskAdjustment`
 
-3. Install and run:
-   ```bash
-   npm install
-   npm run dev
-   ```
+- **ICE-style** (without explicit risk):  
+  `Impact × Confidence / Effort`
 
-4. Open [http://localhost:3000](http://localhost:3000) — you’ll land on the dashboard (full workspace and history).
+Scoring models are implemented as pluggable `ScoringModel` interfaces, so different weighting strategies can be explored without changing the upstream pipeline.
 
-**Troubleshooting:** If you see "OPENAI_API_KEY is not set", ensure `.env.local` exists with `OPENAI_API_KEY=sk-...` (no quotes, no spaces around `=`), run `npm run check-env`, then restart the dev server.
+The engine:
 
-## API
+1. Normalizes and applies the selected scoring model.
+2. Computes a composite score for each experiment.
+3. Runs a sensitivity simulation (±20% impact/effort) to derive a score range.
+4. Ranks experiments from highest to lowest composite score.
+5. Highlights a **Recommended Focus** experiment based on the current model.
 
-**POST /api/analyze-problem**
-
-```json
-{
-  "description": "Users drop off at step 2 of signup. 70% never complete.",
-  "context": "B2B SaaS, 14-day trial"
-}
-```
-
-Returns full decision output: problem, structuredProblem, segments, hypotheses, experiments.
+This keeps prioritization explicit and inspectable rather than hidden behind an opaque “AI suggestion.”
 
 ---
 
-## Usage
+## System Architecture
 
-1. Open the app → you’re on the **dashboard**.
-2. Enter a problem description (and optional context), then **Run analysis**.
-3. View **Reasoning layers** and the cards (Problem summary, Causes, Segments, Hypotheses, Experiments, Metrics).
-4. Use **History** (last 10 requests) to reopen any previous analysis.
+The copilot is built as a multi-stage reasoning pipeline. Each stage consumes typed inputs and produces structured outputs.
+
+High-level flow:
+
+1. **Problem Input**  
+   - Raw problem description and optional context (north star metric, product stage, team size, risk tolerance).
+
+2. **Problem Structuring Agent**  
+   - Transforms the input into a structured problem: funnel stage, friction points, intent mismatch.
+
+3. **Segmentation Agent**  
+   - Generates behavioral, lifecycle, and intent-based segments relevant to the problem.
+
+4. **Hypothesis Agent**  
+   - Produces likely root causes and potential solutions.  
+   - Links causes to segments and solutions to causes.
+
+5. **Experiment Generator**  
+   - Designs experiments from the hypotheses.  
+   - For each experiment, produces:
+     - `id`, `name`, `design`, optional `solutionId`, optional `causeIds`, optional `duration`  
+     - Success metrics (primary, secondary, guardrail)  
+     - Expected impact (description, magnitude, confidence)
+
+6. **Prioritization Engine**  
+   - For each experiment:
+     - Runs dedicated estimators for impact, effort, risk, and confidence (using OpenAI structured output).  
+     - Applies a selected scoring model (e.g. RICE or ICE).  
+     - Computes sensitivity ranges and a composite score.
+   - Produces:
+     - `PrioritizedExperiment[]` with dimensional scores, composite scores, sensitivity ranges, and reasoning.
+     - A single recommended experiment based on composite score.
+
+7. **Decision Output**  
+   - Aggregated structure combining:
+     - Problem input and structuring  
+     - Segments and hypotheses  
+     - Experiments and metrics  
+     - Prioritized experiments and recommended focus
+
+Every stage emits **structured JSON** validated with Zod. No stage returns free-form chat text; the UI is a dashboard over these structured artifacts.
+
+---
+
+## Tech Stack
+
+- **Next.js** (App Router) — Web application and API routes
+- **TypeScript** — Strongly typed domain models and interfaces
+- **OpenAI API** — Structured-output agents for problem structuring, segmentation, hypotheses, experiments, and estimators
+- **Multi-agent reasoning pipeline** — Problem → Structuring → Segmentation → Hypothesis → Experiment
+- **Prioritization engine** — Estimators, scoring models (RICE/ICE), sensitivity analysis, and recommendation selection
+- **Tailwind CSS** — Clean, minimal UI for the dashboard and results
+
+---
+
+## Product Vision
+
+AI Product Copilot is not intended to replace product thinking. It is a tool to **augment** structured decision-making for Product Managers.
+
+The goals of the project are to:
+
+- Explore how AI can help PMs move faster from fuzzy problems to structured decision frameworks.
+- Preserve rigor by making every step of the reasoning and prioritization pipeline explicit and inspectable.
+- Provide outputs that are easy to share in product reviews, leadership updates, or interviews.
+
+Instead of a conversational assistant, AI Product Copilot acts as a **decision engine**: it ingests a problem, runs a transparent multi-stage process, and produces a prioritized, explainable plan of action.
+

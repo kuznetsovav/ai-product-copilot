@@ -1,19 +1,21 @@
-"use client";
+ "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { AnalyzeForm, type DashboardData } from "@/ui/dashboard/analyze-form";
+import { useState, useEffect, useRef, useMemo } from "react";
+import type { DashboardData } from "@/ui/dashboard/analyze-form";
 import { INTAKE_RESULT_KEY } from "@/lib/constants";
-import { getDecisions } from "@/lib/store/decisions";
-import {
-  ProblemSummaryCard,
-  CausesCard,
-  SegmentsCard,
-  HypothesesCard,
-  ExperimentsCard,
-  MetricsCard,
-} from "@/ui/dashboard/cards";
-import { FlowArrow } from "@/ui/dashboard/card-connectors";
+import { getDecisions, saveDecision } from "@/lib/store/decisions";
 import { PastDecisions } from "@/ui/dashboard/past-decisions";
+import type { PrioritizedExperiment } from "@/lib/types/prioritization";
+import { RiceModel, IceModel, type ScoringModel } from "@/lib/prioritization/ScoringModel";
+import { computeSensitivityRange } from "@/lib/prioritization/Sensitivity";
+import { ProblemSummarySection } from "@/components/results/ProblemSummarySection";
+import { RecommendedFocusSection } from "@/components/results/RecommendedFocusSection";
+import { PrioritizedExperimentsSection } from "@/components/results/PrioritizedExperimentsSection";
+import { useRecommendation } from "@/hooks/useRecommendation";
+import { HeroSection } from "@/components/dashboard/HeroSection";
+import { WhatYouGetSection } from "@/components/dashboard/WhatYouGetSection";
+import { HowItWorksSection } from "@/components/dashboard/HowItWorksSection";
+import { ProblemInputSection } from "@/components/dashboard/ProblemInputSection";
 
 const PROGRESS_CAP = 99;
 const PROGRESS_DURATION_MS = 28000; // time to reach 99% if job is slow
@@ -21,8 +23,10 @@ const PROGRESS_DURATION_MS = 28000; // time to reach 99% if job is slow
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [historyVersion, setHistoryVersion] = useState(0);
   const [hasHistory, setHasHistory] = useState(false);
+  const [scoringModelName, setScoringModelName] = useState<"rice" | "ice">("rice");
   const [progress, setProgress] = useState(0);
   const progressStartRef = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -85,18 +89,83 @@ export default function DashboardPage() {
     }
   }, []);
 
+  const scoringModel: ScoringModel = useMemo(
+    () => (scoringModelName === "rice" ? new RiceModel() : new IceModel()),
+    [scoringModelName]
+  );
+
+  const prioritizedForDisplay: PrioritizedExperiment[] | null = useMemo(() => {
+    if (!data?.prioritizedExperiments || data.prioritizedExperiments.length === 0) {
+      return null;
+    }
+    const recomputed = data.prioritizedExperiments.map((exp) => {
+      const compositeScore = scoringModel.compute(
+        exp.impactScore,
+        exp.effortScore,
+        exp.confidenceScore,
+        exp.riskScore
+      );
+      const sensitivityRange = computeSensitivityRange(
+        exp.impactScore,
+        exp.effortScore,
+        exp.confidenceScore,
+        exp.riskScore,
+        scoringModel
+      );
+      return {
+        ...exp,
+        compositeScore,
+        sensitivityRange,
+      };
+    });
+    return recomputed.sort((a, b) => b.compositeScore - a.compositeScore);
+  }, [data?.prioritizedExperiments, scoringModel]);
+
+  const { recommendedExperiment, restExperiments } = useRecommendation(
+    prioritizedForDisplay
+  );
+
+  async function handleProblemSubmit(payload: {
+    description: string;
+    context?: string;
+    northStarMetric?: string;
+    productStage?: string;
+    teamSize?: number;
+    riskTolerance?: string;
+  }) {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/analyze-problem", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        setError(
+          typeof json.error === "string"
+            ? json.error
+            : "Analysis failed. Please check your input and try again."
+        );
+        return;
+      }
+      saveDecision(json);
+      setData(json);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Request failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <main className="min-h-screen w-full bg-[var(--background)]">
       <div className="flex w-full justify-center">
         <div className="w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
-          <header className="mb-6 sm:mb-8 text-center">
-            <h1 className="font-display text-xl font-semibold tracking-tight text-[var(--foreground)] sm:text-2xl">
-              PM Decision Copilot
-            </h1>
-            <p className="mt-0.5 text-xs text-zinc-500 sm:text-sm max-w-2xl mx-auto">
-              Structured reasoning: problem → causes → segments → hypotheses → experiments → metrics
-            </p>
-          </header>
+          <HeroSection />
+          <WhatYouGetSection />
+          <HowItWorksSection />
 
           <div
             className={`mb-6 sm:mb-8 flex flex-col gap-4 ${
@@ -106,7 +175,11 @@ export default function DashboardPage() {
             <div
               className={`min-w-0 w-full ${hasHistory ? "flex-1" : "max-w-xl"}`}
             >
-              <AnalyzeForm onResult={setData} onLoadingChange={setLoading} />
+              <ProblemInputSection
+                onSubmit={handleProblemSubmit}
+                loading={loading}
+                error={error}
+              />
             </div>
             {hasHistory && (
               <div className="w-full lg:w-80 lg:shrink-0">
@@ -145,60 +218,34 @@ export default function DashboardPage() {
           )}
 
           {data && (
-          <>
-            <div className="mb-4 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setData(null)}
-                className="rounded-lg border border-zinc-600 bg-zinc-800 px-4 py-2.5 text-sm text-zinc-300 transition hover:bg-zinc-700 hover:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500/50 active:scale-[0.98] min-h-[44px] sm:min-h-0 sm:py-1.5 sm:px-3"
-              >
-                Reset
-              </button>
-            </div>
-
-            <div className="space-y-6 sm:space-y-8">
-              <ProblemSummaryCard data={data} />
-
-              {/* Causes → Segments → Hypotheses */}
-              <div className="rounded-xl border border-amber-500/20 bg-amber-950/10 p-2 sm:p-3">
-                <p className="mb-3 text-center text-[10px] font-medium uppercase tracking-widest text-amber-500/60 sm:text-xs">
-                  Problem analysis flow
-                </p>
-                <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-stretch sm:gap-2 xl:gap-4">
-                  <div className="min-w-0 min-h-[100px] flex-1">
-                    <CausesCard data={data} />
-                  </div>
-                  <FlowArrow className="hidden self-center sm:block" />
-                  <FlowArrow direction="down" className="self-center py-1 sm:hidden" />
-                  <div className="min-w-0 min-h-[100px] flex-1">
-                    <SegmentsCard data={data} />
-                  </div>
-                  <FlowArrow className="hidden self-center sm:block" />
-                  <FlowArrow direction="down" className="self-center py-1 sm:hidden" />
-                  <div className="min-w-0 min-h-[100px] flex-1">
-                    <HypothesesCard data={data} />
-                  </div>
-                </div>
+            <>
+              <div className="mb-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setData(null)}
+                  className="rounded-lg border border-zinc-600 bg-zinc-800 px-4 py-2.5 text-sm text-zinc-300 transition hover:bg-zinc-700 hover:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500/50 active:scale-[0.98] min-h-[44px] sm:min-h-0 sm:py-1.5 sm:px-3"
+                >
+                  Reset
+                </button>
               </div>
 
-              {/* Experiments → Metrics */}
-              <div className="rounded-xl border border-amber-500/20 bg-amber-950/10 p-2 sm:p-3">
-                <p className="mb-3 text-center text-[10px] font-medium uppercase tracking-widest text-amber-500/60 sm:text-xs">
-                  Experiment validation flow
-                </p>
-                <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-stretch sm:gap-2 xl:gap-4">
-                  <div className="min-w-0 min-h-[100px] flex-1">
-                    <ExperimentsCard data={data} />
-                  </div>
-                  <FlowArrow className="hidden self-center sm:block" />
-                  <FlowArrow direction="down" className="self-center py-1 sm:hidden" />
-                  <div className="min-w-0 min-h-[100px] flex-1">
-                    <MetricsCard data={data} />
-                  </div>
-                </div>
+              <div className="space-y-6 sm:space-y-8">
+                <ProblemSummarySection data={data} />
+
+                <RecommendedFocusSection
+                  recommendedExperiment={recommendedExperiment}
+                  data={data}
+                />
+
+                <PrioritizedExperimentsSection
+                  prioritizedExperiments={restExperiments}
+                  data={data}
+                  scoringModelName={scoringModelName}
+                  onScoringModelChange={setScoringModelName}
+                  warning={data.prioritizationError}
+                />
               </div>
-            </div>
-          </>
+            </>
           )}
         </div>
       </div>
